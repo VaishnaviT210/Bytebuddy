@@ -1,2 +1,20 @@
 <h2>Student Dashboard</h2>
-<p>Welcome Student</p>
+
+<input id="msg">
+<button onclick="send()">Ask</button>
+
+<div id="chatbox"></div>
+
+<script>
+function send(){
+    fetch("/chat",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({message:document.getElementById("msg").value})
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        document.getElementById("chatbox").innerHTML += "<p>"+data.reply+"</p>";
+    });
+}
+</script>
