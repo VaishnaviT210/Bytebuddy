@@ -1,7 +1,6 @@
 flask
 gunicorn
+requests
 psycopg2-binary
 flask-login
 flask-bcrypt
-openai
-
