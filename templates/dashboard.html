@@ -1,20 +1,36 @@
-<h2>Student Dashboard</h2>
+<h2>Department Dashboard</h2>
+<a href="/logout">Logout</a>
 
-<input id="msg">
-<button onclick="send()">Ask</button>
+<h3>Faculty</h3>
+{% for f in faculty %}
+<p>{{ f[0] }} - {{ f[1] }}</p>
+{% endfor %}
 
-<div id="chatbox"></div>
+{% if role == 'admin' %}
+<h4>Add Faculty</h4>
+<form method="POST" action="/add_faculty">
+<input name="name" placeholder="Name">
+<input name="designation" placeholder="Designation">
+<button>Add</button>
+</form>
+{% endif %}
 
-<script>
-function send(){
-    fetch("/chat",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({message:document.getElementById("msg").value})
-    })
-    .then(res=>res.json())
-    .then(data=>{
-        document.getElementById("chatbox").innerHTML += "<p>"+data.reply+"</p>";
-    });
-}
-</script>
+<h3>Subjects</h3>
+{% for s in subjects %}
+<p>Sem {{ s[0] }} - {{ s[1] }} - {{ s[2] }}</p>
+{% endfor %}
+
+<h3>Exam Rules</h3>
+{% for r in rules %}
+<p>{{ r[0] }}</p>
+{% endfor %}
+
+<h3>Mark Policy</h3>
+{% for p in policy %}
+<p>{{ p[0] }}</p>
+{% endfor %}
+
+<h3>Class Strength</h3>
+{% for c in strength %}
+<p>{{ c[1] }} - Girls: {{ c[2] }}, Boys: {{ c[3] }}, Total: {{ c[4] }}</p>
+{% endfor %}
