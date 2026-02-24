@@ -1,129 +1,102 @@
+from flask import Flask, render_template, request, redirect, session
+from flask_bcrypt import Bcrypt
+from db import get_connection
 import os
-import psycopg2
-import requests
-from flask import Flask, render_template, request, redirect, session, jsonify
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
+app.secret_key = "supersecret"
+bcrypt = Bcrypt(app)
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+# ---------------- HOME ----------------
+@app.route("/")
+def home():
+    return redirect("/login")
 
-# ---------------- DATABASE ----------------
+# ---------------- LOGIN ----------------
+@app.route("/login", methods=["GET","POST"])
+def login():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
 
-def get_db_connection():
-    return psycopg2.connect(DATABASE_URL)
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT id, password, role FROM users WHERE username=%s", (username,))
+        user = cur.fetchone()
 
-def init_db():
-    conn = get_db_connection()
+        if user and bcrypt.check_password_hash(user[1], password):
+            session["user_id"] = user[0]
+            session["role"] = user[2]
+
+            return redirect("/dashboard")
+
+        return "Invalid credentials"
+
+    return render_template("login.html")
+
+# ---------------- DASHBOARD ----------------
+@app.route("/dashboard")
+def dashboard():
+    if "role" not in session:
+        return redirect("/login")
+
+    conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS placements (
-        id SERIAL PRIMARY KEY,
-        company TEXT,
-        date TEXT,
-        details TEXT
-    );
-    """)
+    cur.execute("SELECT name, designation FROM faculty")
+    faculty = cur.fetchall()
 
+    cur.execute("SELECT semester, code, name FROM subjects ORDER BY semester")
+    subjects = cur.fetchall()
+
+    cur.execute("SELECT rule FROM exam_rules")
+    rules = cur.fetchall()
+
+    cur.execute("SELECT policy FROM mark_policy")
+    policy = cur.fetchall()
+
+    cur.execute("SELECT * FROM class_strength")
+    strength = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return render_template(
+        "dashboard.html",
+        faculty=faculty,
+        subjects=subjects,
+        rules=rules,
+        policy=policy,
+        strength=strength,
+        role=session["role"]
+    )
+
+# ---------------- ADMIN ADD FACULTY ----------------
+@app.route("/add_faculty", methods=["POST"])
+def add_faculty():
+    if session.get("role") != "admin":
+        return redirect("/dashboard")
+
+    name = request.form["name"]
+    designation = request.form["designation"]
+
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO faculty (name, designation, department) VALUES (%s,%s,%s)",
+        (name, designation, "AI&DS")
+    )
     conn.commit()
     cur.close()
     conn.close()
 
-init_db()
+    return redirect("/dashboard")
 
-# ---------------- AI FUNCTION ----------------
-
-def get_ai_response(user_message):
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT company,date,details FROM placements;")
-    data = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    db_info = ""
-    for row in data:
-        db_info += f"Company: {row[0]}, Date: {row[1]}, Details: {row[2]}\n"
-
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "model": "mistralai/mistral-7b-instruct",
-        "messages": [
-            {
-                "role": "system",
-                "content": f"You are a college placement assistant. Use this data:\n{db_info}"
-            },
-            {"role": "user", "content": user_message}
-        ]
-    }
-
-    response = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers=headers,
-        json=payload
-    )
-
-    result = response.json()
-    return result["choices"][0]["message"]["content"]
-
-# ---------------- ROUTES ----------------
-
-@app.route("/")
-def home():
-    return render_template("index.html")
-
-@app.route("/login", methods=["GET","POST"])
-def login():
-    if request.method == "POST":
-        password = request.form["password"]
-
-        if password == "1234":
-            session["logged_in"] = True
-            return redirect("/student")
-        else:
-            return "Invalid Password"
-
-    return render_template("login.html")
-
-@app.route("/admin", methods=["GET","POST"])
-def admin_dashboard():
-
-    if request.method == "POST":
-        company = request.form["company"]
-        date = request.form["date"]
-        details = request.form["details"]
-
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO placements (company,date,details) VALUES (%s,%s,%s);",
-            (company,date,details)
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-
-    return render_template("admin_dashboard.html")
-
-@app.route("/student")
-def student_dashboard():
-    if not session.get("logged_in"):
-        return redirect("/login")
-    return render_template("student_dashboard.html")
-
-@app.route("/chat", methods=["POST"])
-def chat():
-    user_msg = request.json["message"]
-    reply = get_ai_response(user_msg)
-    return jsonify({"reply": reply})
+# ---------------- LOGOUT ----------------
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/login")
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(debug=True)
